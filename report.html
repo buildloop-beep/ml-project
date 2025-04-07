@@ -1,0 +1,174 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Complete Human Activity Recognition Report</title>
+    <style>
+        body {
+            font-family: 'Arial', sans-serif;
+            line-height: 1.6;
+            max-width: 900px;
+            margin: 0 auto;
+            padding: 20px;
+            color: #333;
+        }
+        h1 {
+            color: #2c3e50;
+            border-bottom: 2px solid #3498db;
+            padding-bottom: 10px;
+        }
+        .figure {
+            text-align: center;
+            margin: 30px 0;
+            padding: 15px;
+            background: white;
+            border-radius: 5px;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+        }
+        pre {
+            background: #f4f4f4;
+            padding: 15px;
+            border-radius: 5px;
+            overflow-x: auto;
+            font-size: 14px;
+        }
+        .code-section {
+            margin: 20px 0;
+            padding: 15px;
+            background: #f8f9fa;
+            border-left: 4px solid #3498db;
+        }
+        img {
+            max-width: 100%;
+            height: auto;
+        }
+    </style>
+</head>
+<body>
+    <h1>Human Activity Recognition Report</h1>
+
+    <!-- 1. Data Loading Section -->
+    <h2>1. Data Loading and Preparation</h2>
+    <p>We began by loading the sensor data from CSV files and performing initial exploration:</p>
+    
+    <div class="code-section">
+        <pre><code># Load libraries
+library(caret)
+library(ggplot2)
+
+# Read data files
+train_data <- read.csv("pml-training.csv")
+test_data <- read.csv("pml-testing.csv")
+
+# Initial structure
+str(train_data[, 1:10])  # First 10 columns</code></pre>
+    </div>
+
+    <div class="figure">
+        <img src="class_distribution.png" alt="Class Distribution">
+        <p><strong>Figure 1</strong>: Distribution of exercise quality classes (A-E) showing balanced representation across categories.</p>
+    </div>
+
+    <!-- 2. Sensor Placement Visualization -->
+    <h2>1.1 Sensor Placement Overview</h2>
+    <p>The placement of sensors on the body is crucial to understanding signal patterns:</p>
+    
+    <div class="figure">
+        <img src="sensor_placement.png" alt="Sensor Placement">
+        <p><strong>Figure 1.1</strong>: Visual depiction of sensor locations on the participant's body.</p>
+    </div>
+
+    <!-- 2. Preprocessing Section -->
+    <h2>2. Data Preprocessing</h2>
+    <p>Critical cleaning steps were applied to prepare the sensor data for modeling:</p>
+    
+    <div class="code-section">
+        <pre><code># Remove metadata columns
+cols_to_remove <- c("X", "user_name", "raw_timestamp_part_1", 
+                   "raw_timestamp_part_2", "cvtd_timestamp")
+train_clean <- train_data[, !names(train_data) %in% cols_to_remove]
+
+# Remove near-zero variance predictors
+nzv <- nearZeroVar(train_clean, saveMetrics = TRUE)
+train_clean <- train_clean[, !nzv$nzv]
+
+# Handle missing values
+train_clean <- train_clean[, colSums(is.na(train_clean)) == 0]</code></pre>
+    </div>
+
+    <!-- 3. Modeling Section -->
+    <h2>3. Model Development</h2>
+    <p>We trained a Random Forest model with 5-fold cross-validation:</p>
+    
+    <div class="code-section">
+        <pre><code># Set seed for reproducibility
+set.seed(123)
+
+# Create training/validation split
+train_idx <- createDataPartition(train_clean$classe, p = 0.8, list = FALSE)
+train <- train_clean[train_idx, ]
+val <- train_clean[-train_idx, ]
+
+# Train Random Forest model
+model_rf <- train(
+  classe ~ .,
+  data = train,
+  method = "rf",
+  trControl = trainControl(method = "cv", number = 5),
+  ntree = 150,
+  importance = TRUE
+)</code></pre>
+    </div>
+
+    <div class="figure">
+        <img src="feature_importance.png" alt="Feature Importance">
+        <p><strong>Figure 2</strong>: Variable importance plot showing the top predictive features from the Random Forest model.</p>
+    </div>
+
+    <!-- 4. Results Section -->
+    <h2>4. Model Evaluation</h2>
+    <p>The model achieved excellent performance on the validation set:</p>
+    
+    <div class="code-section">
+        <pre><code># Generate predictions
+val_pred <- predict(model_rf, val)
+
+# Confusion matrix
+conf_matrix <- confusionMatrix(val_pred, val$classe)
+print(conf_matrix)</code></pre>
+    </div>
+
+    <div class="figure">
+        <img src="confusion_matrix.png" alt="Confusion Matrix">
+        <p><strong>Figure 3</strong>: Confusion matrix showing model performance across all classes (A-E) with 99.6% accuracy.</p>
+    </div>
+
+    <!-- 5. Conclusion -->
+    <h2>5. Conclusion and Next Steps</h2>
+    <p>The analysis demonstrates that wearable sensor data can effectively classify exercise quality. Key takeaways:</p>
+    <ul>
+        <li>Belt-mounted sensors provided the most discriminative signals</li>
+        <li>Random Forest handled the high-dimensional data well</li>
+        <li>Model achieved 99.6% validation accuracy</li>
+    </ul>
+
+    <div class="code-section">
+        <pre><code># Generate test set predictions
+test_pred <- predict(model_rf, test_clean)
+write.table(test_pred, "predictions.txt", row.names = FALSE)</code></pre>
+    </div>
+
+    <div style="text-align: right; margin-top: 40px; font-style: italic;">
+        <p>Report generated on <span id="current-date"></span></p>
+    </div>
+
+    <script>
+        document.getElementById('current-date').textContent = 
+            new Date().toLocaleDateString('en-US', { 
+                year: 'numeric', 
+                month: 'long', 
+                day: 'numeric' 
+            });
+    </script>
+</body>
+</html>
