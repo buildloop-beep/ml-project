@@ -1,0 +1,112 @@
+---
+title: "Human Activity Recognition Report"
+author: "Your Name"
+date: "`r format(Sys.Date(), '%B %d, %Y')`"
+output: 
+  html_document:
+    toc: true
+    toc_float: true
+    theme: cosmo
+    code_folding: hide
+    fig_width: 8
+    fig_height: 5
+    df_print: paged
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(
+  echo = TRUE,
+  warning = FALSE,
+  message = FALSE,
+  fig.align = 'center',
+  cache = TRUE
+)
+library(caret)
+library(ggplot2)
+library(dplyr)
+# Load datasets
+train_data <- read.csv("pml-training.csv")
+test_data <- read.csv("pml-testing.csv")
+
+# Initial exploration
+str(train_data[, 1:10])  # First 10 columns
+summary(train_data$classe)
+# Class distribution plot
+ggplot(train_data, aes(x = classe, fill = classe)) +
+  geom_bar() +
+  scale_fill_brewer(palette = "Set2") +
+  labs(title = "Class Distribution", 
+       x = "Exercise Quality Class", 
+       y = "Count") +
+  theme_minimal()
+# Remove metadata columns
+cols_to_remove <- c("X", "user_name", "raw_timestamp_part_1", 
+                   "raw_timestamp_part_2", "cvtd_timestamp",
+                   "new_window", "num_window")
+train_clean <- train_data[, !names(train_data) %in% cols_to_remove]
+
+# Remove near-zero variance predictors
+nzv <- nearZeroVar(train_clean, saveMetrics = TRUE)
+train_clean <- train_clean[, !nzv$nzv]
+
+# Remove columns with >95% NA values
+train_clean <- train_clean[, colSums(is.na(train_clean)) < nrow(train_clean)*0.95]
+
+# Convert classe to factor
+train_clean$classe <- factor(train_clean$classe)
+set.seed(123)
+train_index <- createDataPartition(train_clean$classe, p = 0.8, list = FALSE)
+train_set <- train_clean[train_index, ]
+val_set <- train_clean[-train_index, ]
+
+# Train Random Forest model
+model_rf <- train(
+  classe ~ .,
+  data = train_set,
+  method = "rf",
+  trControl = trainControl(method = "cv", number = 5),
+  ntree = 150,
+  importance = TRUE
+)
+
+# Save model for later use
+saveRDS(model_rf, "model_rf.rds")
+# Feature importance plot
+var_imp <- varImp(model_rf)$importance
+var_imp$Feature <- rownames(var_imp)
+var_imp <- var_imp[order(-var_imp$Overall), ][1:10, ]
+
+ggplot(var_imp, aes(x = reorder(Feature, Overall), y = Overall)) +
+  geom_col(fill = "steelblue") +
+  coord_flip() +
+  labs(title = "Top 10 Predictive Features",
+       x = "Feature",
+       y = "Importance Score") +
+  theme_minimal()
+# Validation predictions
+val_pred <- predict(model_rf, val_set)
+
+# Confusion matrix
+conf_matrix <- confusionMatrix(val_pred, val_set$classe)
+conf_matrix
+# Confusion matrix visualization
+ggplot(as.data.frame(conf_matrix$table), 
+       aes(x = Reference, y = Prediction, fill = Freq)) +
+  geom_tile() +
+  scale_fill_gradient(low = "white", high = "steelblue") +
+  geom_text(aes(label = Freq), color = "black") +
+  labs(title = "Confusion Matrix",
+       subtitle = paste("Overall Accuracy:", 
+                       round(conf_matrix$overall["Accuracy"], 4)*100, "%"),
+       x = "Actual Class",
+       y = "Predicted Class") +
+  theme_minimal()
+# Preprocess test data same as training
+test_clean <- test_data[, names(test_data) %in% names(train_clean)]
+test_clean <- test_clean[, !names(test_clean) %in% "classe"]
+
+# Generate predictions
+test_pred <- predict(model_rf, test_clean)
+
+# Save predictions
+write.table(test_pred, "predictions.txt", row.names = FALSE, col.names = FALSE)
